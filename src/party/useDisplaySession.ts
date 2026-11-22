@@ -14,10 +14,23 @@ import {
   openCard,
   randomId,
   randomIndex,
+  randomKey,
+  sealWithKey,
   type CardContent,
   type SealedCard,
 } from "@/lib/crypto";
-import { displayInbox, isCardMsg, LIMITS, type CmdMsg, type Phase } from "@/lib/protocol";
+import type { KeepsakeData } from "@/lib/keepsake";
+import {
+  displayInbox,
+  EXPORT_CHUNK_CHARS,
+  exportInbox,
+  isCardMsg,
+  LIMITS,
+  type CmdMsg,
+  type ExportChunkMsg,
+  type ExportReadyMsg,
+  type Phase,
+} from "@/lib/protocol";
 import { getTransport, type ListenStatus } from "@/lib/transport";
 
 export interface StoredCard extends SealedCard {
@@ -48,6 +61,15 @@ export interface RevealedCard {
   number?: number; // reveal number (#N)
   content: CardContent;
 }
+
+/** A one-time export offer shown as a QR (id + key live only in the QR link). */
+export interface ExportOffer {
+  id: string;
+  key: string;
+  status: "waiting" | "sending" | "sent" | "failed";
+}
+
+const EXPORT_TTL_MS = 10 * 60_000;
 
 const STORAGE_KEY = "xmas-display-session";
 
@@ -94,8 +116,12 @@ export function useDisplaySession() {
   const [connection, setConnection] = useState<ListenStatus>("connecting");
   /** Has this party ever been live? (busy at start = couldn't open the party) */
   const [everOnline, setEverOnline] = useState(false);
+  const [exportOffer, setExportOffer] = useState<ExportOffer | null>(null);
+  /** Wishes saved this session (phone or download) — End party warns if not. */
+  const [exported, setExported] = useState(false);
   const ref = useRef<DisplaySession | null>(null);
   const contents = useRef(new Map<string, CardContent>()); // id → decrypted, revealed only
+  const offerRef = useRef<(ExportOffer & { expires: number }) | null>(null);
 
   /** Rebuild the revealed list from the session + decrypted contents. */
   const refreshRevealed = useCallback(() => {
@@ -203,6 +229,57 @@ export function useDisplaySession() {
     [commit, refreshRevealed],
   );
 
+  /** Revealed (not removed) wishes, in reveal order — what gets exported. */
+  const buildExport = useCallback((): KeepsakeData => {
+    const s = ref.current;
+    const wishes = (s?.cards ?? [])
+      .filter((c) => c.revealedAt && !c.removed && contents.current.has(c.id))
+      .sort((a, b) => (a.revealNo ?? 0) - (b.revealNo ?? 0))
+      .map((c) => ({ no: c.revealNo, ...contents.current.get(c.id)! }));
+    return { title: "Our Christmas wishes", date: new Date().toISOString(), wishes };
+  }, []);
+
+  /** Show a fresh one-time export QR. */
+  const offerExport = useCallback(() => {
+    const offer: ExportOffer = { id: randomId(9), key: randomKey(), status: "waiting" };
+    offerRef.current = { ...offer, expires: Date.now() + EXPORT_TTL_MS };
+    setExportOffer(offer);
+  }, []);
+
+  const closeExport = useCallback(() => {
+    offerRef.current = null;
+    setExportOffer(null);
+  }, []);
+
+  const markExported = useCallback(() => setExported(true), []);
+
+  /** Phone scanned the export QR and is listening: send it the wishes, once. */
+  const sendExport = useCallback(
+    async (offer: ExportOffer) => {
+      const s = ref.current;
+      if (!s) return;
+      setExportOffer({ ...offer, status: "sending" });
+      try {
+        const box = await sealWithKey(offer.key, buildExport());
+        const total = Math.max(1, Math.ceil(box.ct.length / EXPORT_CHUNK_CHARS));
+        for (let part = 0; part < total; part++) {
+          const msg: ExportChunkMsg = {
+            part,
+            total,
+            iv: box.iv,
+            data: box.ct.slice(part * EXPORT_CHUNK_CHARS, (part + 1) * EXPORT_CHUNK_CHARS),
+          };
+          await getTransport().send(exportInbox(s.room, offer.id), "export", msg);
+        }
+        setExportOffer({ ...offer, status: "sent" });
+        setExported(true);
+      } catch {
+        setExportOffer({ ...offer, status: "failed" });
+      }
+    },
+    [buildExport],
+  );
+
   /** Remove the revealed card shown as #N (host remote). */
   const removeByNumber = useCallback(
     (n: number) => {
@@ -218,6 +295,8 @@ export function useDisplaySession() {
     setCurrent(null);
     contents.current.clear();
     setRevealedCards([]);
+    offerRef.current = null;
+    setExportOffer(null);
     // Drop the cards and the private key: nothing can be recovered.
     commit({ ...s, phase: "ended", cards: [], privateJwk: {}, currentId: undefined });
   }, [commit]);
@@ -237,6 +316,7 @@ export function useDisplaySession() {
     setRevealedCards([]);
     setConnection("connecting");
     setEverOnline(false);
+    setExported(false);
     commit(await createSession());
   }, [commit]);
 
@@ -261,6 +341,15 @@ export function useDisplaySession() {
         return;
       }
 
+      if (event === "export-ready") {
+        const o = offerRef.current;
+        const id = (payload as Partial<ExportReadyMsg> | null)?.exportId;
+        if (!o || id !== o.id || Date.now() > o.expires) return;
+        offerRef.current = null; // one-time: a second scan gets nothing
+        void sendExport(o);
+        return;
+      }
+
       if (event === "cmd") {
         // Host remote, fire-and-forget. Only obey the host token from the host QR.
         const p = (payload ?? {}) as Partial<CmdMsg>;
@@ -272,7 +361,7 @@ export function useDisplaySession() {
         else if (p.action === "remove" && Number.isInteger(p.cardNo)) removeByNumber(p.cardNo!);
       }
     },
-    [commit, startReveal, revealNext, backToCollecting, endParty, removeByNumber],
+    [commit, startReveal, revealNext, backToCollecting, endParty, removeByNumber, sendExport],
   );
 
   // Load (after a refresh) or create the session; re-open already revealed cards.
@@ -324,5 +413,11 @@ export function useDisplaySession() {
     endParty,
     newParty,
     setScene,
+    exportOffer,
+    exported,
+    offerExport,
+    closeExport,
+    buildExport,
+    markExported,
   };
 }

@@ -5,6 +5,11 @@
  *   guest → display : "card"  CardMsg   one HTTP POST, fire-and-forget
  *   host  → display : "cmd"   CmdMsg    one HTTP POST, fire-and-forget
  *
+ *   Export (wishes → host's phone), started from the display's export QR:
+ *   phone → display : "export-ready" ExportReadyMsg   (phone is listening)
+ *   display → phone : "export"       ExportChunkMsg   (encrypted with the key
+ *                                                      from the QR's #fragment)
+ *
  * Only the display listens (one connection per party). Guests and the host
  * remote never connect; they watch the party screen for the result.
  */
@@ -20,6 +25,22 @@ export const LIMITS = {
 export type Phase = "collecting" | "revealing" | "ended";
 
 export const displayInbox = (room: string) => `xmas-${room}`;
+/** Where one export is delivered: only the phone that scanned that QR listens. */
+export const exportInbox = (room: string, exportId: string) => `xmas-${room}-x-${exportId}`;
+
+export interface ExportReadyMsg {
+  exportId: string;
+}
+
+/** The encrypted export, split into parts to stay under relay message limits. */
+export interface ExportChunkMsg {
+  part: number; // 0-based
+  total: number;
+  iv: string;
+  data: string; // slice of the base64url ciphertext
+}
+
+export const EXPORT_CHUNK_CHARS = 60_000;
 
 export interface CardMsg extends SealedCard {
   cardId: string;

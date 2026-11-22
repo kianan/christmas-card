@@ -38,7 +38,12 @@ export default function HostPage() {
   }
 
   async function cmd(action: HostAction, no?: number) {
-    if (action === "end" && !confirm("End the party? All cards will be wiped for good."))
+    if (
+      action === "end" &&
+      !confirm(
+        "End the party? All cards will be wiped for good.\n\nSaved the wishes? Press X on the party screen to export them first.",
+      )
+    )
       return;
     if (action === "remove" && !confirm(`Remove card #${no}? It can't be brought back.`))
       return;

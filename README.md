@@ -20,9 +20,10 @@ opened on the big screen.
 
 | Route | Who | What |
 |---|---|---|
-| `/display` | TV / projector | Tree, guest QR, reveal. Keys: `R` start reveal, `N`/`Space` next, `Esc` back to collecting, `E` end party, `S` switch scene, `D` remove card on screen, `H` host QR, `F` fullscreen |
+| `/display` | TV / projector | Tree, guest QR, reveal. Keys: `R` start reveal, `N`/`Space` next, `Esc` back to collecting, `E` end party, `S` switch scene, `D` remove card on screen, `X` export wishes, `H` host QR, `F` fullscreen |
 | `/write#r=…&k=…` | Guests (via QR) | Write and send a card — one HTTP POST, no WebSocket; the display confirms with "Card received from K••••" |
 | `/host#r=…&t=…` | Host's phone (press `H` on display) | Start reveal / next / back / end, and "Remove card #N" for pranks — one-way HTTP, no connection |
+| `/export#r=…&x=…&k=…` | Host's phone (press `X` on display) | One-time, end-to-end encrypted export of the revealed wishes → keepsake page (.html): share, download or copy |
 
 ## Run locally
 

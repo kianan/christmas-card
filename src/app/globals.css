@@ -540,3 +540,25 @@ label {
   color: var(--muted);
   font-size: 0.9rem;
 }
+
+/* ---------- export page (phone) ---------- */
+.export-wish {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.export-wish p:first-of-type {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.export-no {
+  color: var(--gold);
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.qr-paused button {
+  margin-top: 0.5rem;
+}

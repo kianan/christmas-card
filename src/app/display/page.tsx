@@ -3,12 +3,18 @@
 import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { useOrigin, useSearch, useTransportName } from "@/lib/hooks";
+import { downloadFile, keepsakeFilename, keepsakeHtml } from "@/lib/keepsake";
 import { useDisplaySession } from "@/party/useDisplaySession";
 import { cardArt, getScene, nextScene, Stage } from "@/scene";
 import { ReceivedFeed } from "./ReceivedFeed";
 
-const confirmEnd = () =>
-  confirm("End the party? All cards will be wiped for good.");
+/** End-party confirmation; nudges towards exporting if the wishes aren't saved yet. */
+const confirmEnd = (unsavedWishes: boolean) =>
+  confirm(
+    unsavedWishes
+      ? "The wishes haven't been exported yet. End the party anyway?\n\nEverything will be wiped for good. Press Cancel, then X, to save them first."
+      : "End the party? All cards will be wiped for good.",
+  );
 const confirmRemove = () => confirm("Remove this card? It can't be brought back.");
 
 /**
@@ -42,6 +48,12 @@ export default function DisplayPage() {
     endParty,
     newParty,
     setScene,
+    exportOffer,
+    exported,
+    offerExport,
+    closeExport,
+    buildExport,
+    markExported,
   } = useDisplaySession();
   const [showHostQr, setShowHostQr] = useState(false);
   const transportName = useTransportName();
@@ -53,6 +65,7 @@ export default function DisplayPage() {
   const total = liveCards.length;
   const revealed = liveCards.filter((c) => c.revealedAt).length;
   const remaining = total - revealed;
+  const unsavedWishes = revealed > 0 && !exported;
   // Saved choice wins; otherwise ?scene=<id> in the URL; otherwise the default.
   const scene = getScene(session?.sceneId ?? new URLSearchParams(search).get("scene"));
 
@@ -72,7 +85,13 @@ export default function DisplayPage() {
       } else if (k === "escape" && phase === "revealing") backToCollecting();
       else if (k === "s") setScene(nextScene(scene.id).id);
       else if (k === "d" && current && confirmRemove()) removeCard(current.id);
-      else if (k === "e" && confirmEnd()) endParty();
+      else if (k === "x") {
+        if (exportOffer) closeExport();
+        else {
+          setShowHostQr(false);
+          offerExport();
+        }
+      } else if (k === "e" && confirmEnd(unsavedWishes)) endParty();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -86,6 +105,10 @@ export default function DisplayPage() {
     removeCard,
     endParty,
     setScene,
+    exportOffer,
+    offerExport,
+    closeExport,
+    unsavedWishes,
   ]);
 
   // Warn before closing the tab while cards are hanging.
@@ -129,6 +152,13 @@ export default function DisplayPage() {
 
   const guestUrl = `${origin}/write${search}#r=${session.room}&k=${session.publicKey}`;
   const hostUrl = `${origin}/host${search}#r=${session.room}&t=${session.hostToken}`;
+  const exportUrl =
+    exportOffer && `${origin}/export${search}#r=${session.room}&x=${exportOffer.id}&k=${exportOffer.key}`;
+  const downloadHere = () => {
+    const data = buildExport();
+    downloadFile(keepsakeFilename(data), keepsakeHtml(data));
+    markExported();
+  };
   const { RevealCard } = cardArt;
 
   return (
@@ -168,7 +198,51 @@ export default function DisplayPage() {
       </section>
 
       <aside className="display-side">
-        {showHostQr ? (
+        {exportOffer && exportUrl ? (
+          <>
+            <h2>Save the wishes</h2>
+            {revealed === 0 ? (
+              <p className="muted">
+                No revealed wishes yet. Only revealed cards are exported, so reveal
+                some first.
+              </p>
+            ) : (
+              <>
+                <div className="qr-wrap">
+                  <a className="qr" href={exportUrl} target="_blank" rel="noreferrer">
+                    <QRCodeSVG value={exportUrl} size={256} marginSize={0} />
+                  </a>
+                  {exportOffer.status !== "waiting" && (
+                    <div className="qr-paused" role="status">
+                      {exportOffer.status === "sending" && <strong>Sending to your phone…</strong>}
+                      {exportOffer.status === "sent" && <strong>✓ Sent to your phone</strong>}
+                      {exportOffer.status === "failed" && (
+                        <>
+                          <strong>Couldn&apos;t send</strong>
+                          <span>Make a new code and try again.</span>
+                        </>
+                      )}
+                      <button className="secondary" onClick={offerExport}>
+                        New code
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <p className="muted">
+                  Scan with <strong>your</strong> phone to save {revealed}{" "}
+                  {revealed === 1 ? "wish" : "wishes"} as a keepsake page. This code works
+                  once and is encrypted end to end.
+                </p>
+                <button className="secondary" onClick={downloadHere}>
+                  Download here instead
+                </button>
+              </>
+            )}
+            <button className="secondary" onClick={closeExport}>
+              Close (X)
+            </button>
+          </>
+        ) : showHostQr ? (
           <>
             <h2>Host remote</h2>
             <a className="qr" href={hostUrl} target="_blank" rel="noreferrer">
@@ -249,7 +323,19 @@ export default function DisplayPage() {
         >
           Fullscreen (F)
         </button>
-        <button className="secondary" onClick={() => confirmEnd() && endParty()}>
+        <button
+          className="secondary"
+          onClick={() => {
+            if (exportOffer) closeExport();
+            else {
+              setShowHostQr(false);
+              offerExport();
+            }
+          }}
+        >
+          {exportOffer ? "Close export (X)" : "Export wishes (X)"}
+        </button>
+        <button className="secondary" onClick={() => confirmEnd(unsavedWishes) && endParty()}>
           End party (E)
         </button>
       </footer>
@@ -266,7 +352,7 @@ export default function DisplayPage() {
         {transportName ? ` · ${transportName}` : ""}
       </span>
 
-      {phase === "revealing" && (current || remaining === 0) && (
+      {phase === "revealing" && (current || remaining === 0) && !exportOffer && (
         <div className="overlay" onClick={revealNext}>
           {current ? (
             <div className="reveal-wrap">

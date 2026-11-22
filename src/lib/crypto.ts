@@ -135,3 +135,34 @@ export async function openJson<T>(
 
 export const openCard = (privateJwk: JsonWebKey, card: SealedCard) =>
   openJson<CardContent>(privateJwk, card);
+
+/* ---------- symmetric (export): key travels in a QR link's #fragment ---------- */
+
+export interface SealedBox {
+  iv: string;
+  ct: string;
+}
+
+/** Fresh random AES-256 key, base64url (fits in a QR link). */
+export function randomKey(): string {
+  return toB64u(crypto.getRandomValues(new Uint8Array(32)));
+}
+
+const aesFromB64 = (keyB64: string, usage: KeyUsage) =>
+  crypto.subtle.importKey("raw", fromB64u(keyB64), "AES-GCM", false, [usage]);
+
+export async function sealWithKey(keyB64: string, value: unknown): Promise<SealedBox> {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const plain = new TextEncoder().encode(JSON.stringify(value));
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await aesFromB64(keyB64, "encrypt"), plain);
+  return { iv: toB64u(iv), ct: toB64u(ct) };
+}
+
+export async function openWithKey<T>(keyB64: string, box: SealedBox): Promise<T> {
+  const plain = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: fromB64u(box.iv) },
+    await aesFromB64(keyB64, "decrypt"),
+    fromB64u(box.ct),
+  );
+  return JSON.parse(new TextDecoder().decode(plain)) as T;
+}

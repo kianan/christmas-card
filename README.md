@@ -19,7 +19,7 @@ opened on the big screen.
 
 | Route | Who | What |
 |---|---|---|
-| `/display` | TV / projector | Tree, guest QR, reveal. Keys: `R` start reveal, `N`/`Space` next, `H` host QR, `F` fullscreen |
+| `/display` | TV / projector | Tree, guest QR, reveal. Keys: `R` start reveal, `N`/`Space` next, `Esc` back to collecting, `E` end party, `H` host QR, `F` fullscreen |
 | `/write#r=…&k=…` | Guests (via QR) | Write and send a card |
 | `/host#r=…&t=…` | Host's phone (press `H` on display) | Start reveal / next / end — counts only |
 

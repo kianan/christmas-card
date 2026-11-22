@@ -6,6 +6,26 @@ import { useOrigin, useSearch, useTransportName } from "@/lib/hooks";
 import { useDisplaySession } from "@/party/useDisplaySession";
 import { theme } from "@/scene";
 
+const confirmEnd = () =>
+  confirm("End the party? All cards will be wiped for good.");
+
+/**
+ * Fullscreen, plus Keyboard Lock (Chrome/Edge) so Esc reaches the page instead
+ * of exiting fullscreen — hold Esc to leave fullscreen. Other browsers: the
+ * first Esc exits fullscreen, the next one goes back to collecting.
+ */
+async function goFullscreen() {
+  try {
+    await document.documentElement.requestFullscreen?.();
+    const nav = navigator as Navigator & {
+      keyboard?: { lock?: (keys: string[]) => Promise<void> };
+    };
+    await nav.keyboard?.lock?.(["Escape"]);
+  } catch {
+    // fullscreen or keyboard lock not allowed — ignore
+  }
+}
+
 export default function DisplayPage() {
   const {
     session,
@@ -30,19 +50,22 @@ export default function DisplayPage() {
   // Keyboard shortcuts for a laptop driving the projector.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (!phase || phase === "ended") return;
       if (e.target instanceof HTMLInputElement) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return; // leave browser shortcuts alone
       const k = e.key.toLowerCase();
       if (k === "h") setShowHostQr((v) => !v);
-      else if (k === "f") void document.documentElement.requestFullscreen?.();
+      else if (k === "f") void goFullscreen();
       else if (k === "r" && phase === "collecting") startReveal();
       else if ((k === "n" || k === " " || k === "arrowright") && phase === "revealing") {
         e.preventDefault();
         revealNext();
-      }
+      } else if (k === "escape" && phase === "revealing") backToCollecting();
+      else if (k === "e" && confirmEnd()) endParty();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [phase, startReveal, revealNext]);
+  }, [phase, startReveal, revealNext, backToCollecting, endParty]);
 
   // Warn before closing the tab while cards are hanging.
   useEffect(() => {
@@ -150,7 +173,7 @@ export default function DisplayPage() {
               {current ? "Next card (N)" : "Reveal a card (N)"}
             </button>
             <button className="secondary" onClick={backToCollecting}>
-              Back to collecting
+              Back to collecting (Esc)
             </button>
           </>
         )}
@@ -159,17 +182,12 @@ export default function DisplayPage() {
         </button>
         <button
           className="secondary"
-          onClick={() => void document.documentElement.requestFullscreen?.()}
+          onClick={() => void goFullscreen()}
         >
           Fullscreen (F)
         </button>
-        <button
-          className="secondary"
-          onClick={() => {
-            if (confirm("End the party? All cards will be wiped for good.")) endParty();
-          }}
-        >
-          End party
+        <button className="secondary" onClick={() => confirmEnd() && endParty()}>
+          End party (E)
         </button>
         <span className="muted">
           {connection === "online" ? "● Live" : connection === "error" ? "● Offline" : "● Connecting…"}

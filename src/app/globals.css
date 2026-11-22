@@ -338,6 +338,7 @@ label {
 
 /* ---------- plain scene + cards (placeholders) ---------- */
 .loop-card {
+  position: relative;
   background: #fffaf0f0;
   color: var(--card-text);
   border-radius: 1.2cqw;
@@ -419,6 +420,7 @@ label {
 }
 
 .reveal-card {
+  position: relative;
   background: var(--card);
   color: var(--card-text);
   border-radius: 18px;
@@ -441,31 +443,35 @@ label {
   color: #7a5c3a;
 }
 
+/* reveal number (#N): the host removes pranks by this number */
+.card-no {
+  position: absolute;
+  top: 0.6em;
+  left: 0.8em;
+  font-weight: 800;
+  color: #b0412f;
+  letter-spacing: 0.02em;
+}
+
+.reveal-card .card-no {
+  font-size: 1.6rem;
+}
+
+.loop-card .card-no {
+  font-size: 1.4cqw;
+}
+
 .reveal-card .counter {
   margin-top: 2rem;
   font-size: 0.9rem;
   color: #8b7b68;
 }
 
-/* ---------- host remote: revealed cards ---------- */
-.host-card {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.host-card-message {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.host-card .row {
-  justify-content: space-between;
-}
-
-.host-card-remove {
-  padding: 0.4rem 0.9rem;
-  font-size: 0.9rem;
+/* ---------- host remote ---------- */
+.card-no-input {
+  width: 6rem;
+  font-size: 1.4rem;
+  text-align: center;
 }
 
 /* ---------- display: "card received" feed under the QR ---------- */

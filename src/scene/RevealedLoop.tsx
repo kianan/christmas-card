@@ -39,7 +39,7 @@ export function RevealedLoop({ cards, area, LoopCard, intervalMs = 7000 }: Revea
       }
       aria-live="polite"
     >
-      <LoopCard content={card.content} />
+      <LoopCard content={card.content} number={card.number} />
     </div>
   );
 }

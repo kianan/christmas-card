@@ -2,19 +2,15 @@
  * Wire protocol. Event names must be lowercase (Supabase matches them
  * case-insensitively).
  *
- *   guest  → display : "card"       CardMsg     (one HTTP POST, fire-and-forget:
- *                                                guests never open a WebSocket)
- *   host   → display : "host-hello" HostHelloMsg
- *   host   → display : "cmd"        CmdMsg
- *   display → host   : "status"     StatusMsg   (counts only)
- *   display → host   : "revealed"   SealedCard  (RevealedList, encrypted to the
- *                                                host remote's own key — the
- *                                                relay never sees message text)
+ *   guest → display : "card"  CardMsg   one HTTP POST, fire-and-forget
+ *   host  → display : "cmd"   CmdMsg    one HTTP POST, fire-and-forget
+ *
+ * Only the display listens (one connection per party). Guests and the host
+ * remote never connect; they watch the party screen for the result.
  */
 import type { SealedCard } from "./crypto";
 
 export const LIMITS = {
-  hostListItems: 100, // newest revealed cards sent to the host remote
   messageChars: 500,
   fromChars: 40,
   maxCards: 500,
@@ -24,8 +20,6 @@ export const LIMITS = {
 export type Phase = "collecting" | "revealing" | "ended";
 
 export const displayInbox = (room: string) => `xmas-${room}`;
-export const clientInbox = (room: string, clientId: string) =>
-  `xmas-${room}-${clientId}`;
 
 export interface CardMsg extends SealedCard {
   cardId: string;
@@ -52,36 +46,18 @@ export function nameInitial(name: string | undefined): string | undefined {
 export const maskName = (initial: string | undefined) =>
   initial ? `${initial}••••` : "a Secret Santa";
 
-export interface HostHelloMsg {
-  token: string;
-  replyTo: string;
-  /** Host remote's public key, so the display can send it revealed cards. */
-  pubKey?: string;
-}
-
 export type HostAction =
   | "start-reveal"
   | "next"
   | "back-to-collecting"
   | "end"
-  | "remove"; // remove a revealed card (needs cardId)
+  | "remove"; // remove a revealed card by its reveal number (#N on screen)
 
-export interface CmdMsg extends HostHelloMsg {
+export interface CmdMsg {
+  token: string; // host token from the host QR; the display ignores anything else
   action: HostAction;
-  cardId?: string;
-}
-
-/** Revealed cards, for the host remote (decrypted on the host's phone). */
-export interface RevealedList {
-  currentId?: string;
-  items: { id: string; message: string; from?: string }[];
-}
-
-export interface StatusMsg {
-  phase: Phase;
-  total: number;
-  revealed: number;
-  showing: boolean;
+  /** For "remove": the #N shown on the revealed card (reveal order, from 1). */
+  cardNo?: number;
 }
 
 /** URL fragments: everything after # stays in the browser. */

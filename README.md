@@ -13,7 +13,8 @@ opened on the big screen.
   encrypted on the phone (ECDH P-256 → HKDF → AES-GCM). The relay and the host
   remote only see ciphertext / counts.
 - **Relay only.** Supabase Realtime *Broadcast* passes messages between devices
-  and stores nothing.
+  and stores nothing. Only the display holds a connection (one per party);
+  guests and the host remote send one-way HTTP requests.
 
 ## Pages
 
@@ -21,7 +22,7 @@ opened on the big screen.
 |---|---|---|
 | `/display` | TV / projector | Tree, guest QR, reveal. Keys: `R` start reveal, `N`/`Space` next, `Esc` back to collecting, `E` end party, `S` switch scene, `D` remove card on screen, `H` host QR, `F` fullscreen |
 | `/write#r=…&k=…` | Guests (via QR) | Write and send a card — one HTTP POST, no WebSocket; the display confirms with "Card received from K••••" |
-| `/host#r=…&t=…` | Host's phone (press `H` on display) | Start reveal / next / end; sees revealed cards (never unrevealed) and can remove pranks |
+| `/host#r=…&t=…` | Host's phone (press `H` on display) | Start reveal / next / back / end, and "Remove card #N" for pranks — one-way HTTP, no connection |
 
 ## Run locally
 

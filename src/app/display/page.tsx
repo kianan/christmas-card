@@ -270,7 +270,7 @@ export default function DisplayPage() {
         <div className="overlay" onClick={revealNext}>
           {current ? (
             <div className="reveal-wrap">
-              <RevealCard content={current.content} index={revealed} total={total} />
+              <RevealCard content={current.content} number={current.number} />
               <button
                 className="secondary remove-card"
                 onClick={(e) => {

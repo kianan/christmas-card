@@ -4,6 +4,9 @@
  * The party session. It lives only in the display tab: in memory plus
  * sessionStorage (so an accidental refresh survives, but closing the tab or
  * ending the party wipes everything). No server stores anything.
+ *
+ * The display is the only participant that listens (one connection). Guests
+ * and the host remote send one-way HTTP requests and watch the screen.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -11,26 +14,18 @@ import {
   openCard,
   randomId,
   randomIndex,
-  sealJson,
   type CardContent,
   type SealedCard,
 } from "@/lib/crypto";
-import {
-  clientInbox,
-  displayInbox,
-  isCardMsg,
-  LIMITS,
-  type CmdMsg,
-  type Phase,
-  type RevealedList,
-  type StatusMsg,
-} from "@/lib/protocol";
+import { displayInbox, isCardMsg, LIMITS, type CmdMsg, type Phase } from "@/lib/protocol";
 import { getTransport, type ListenStatus } from "@/lib/transport";
 
 export interface StoredCard extends SealedCard {
   id: string;
   receivedAt: number;
   revealedAt?: number;
+  /** #N shown on screen: reveal order, from 1. Stable even if cards are removed. */
+  revealNo?: number;
   /** Removed by the host (prank). Kept as a tombstone so other cards keep their slots. */
   removed?: boolean;
   /** First character of the sender's name (sent in the clear), for "received from K••••". */
@@ -50,6 +45,7 @@ export interface DisplaySession {
 
 export interface RevealedCard {
   id: string;
+  number?: number; // reveal number (#N)
   content: CardContent;
 }
 
@@ -87,16 +83,6 @@ async function createSession(): Promise<DisplaySession> {
 
 const live = (s: DisplaySession) => s.cards.filter((c) => !c.removed);
 
-export function toStatus(s: DisplaySession): StatusMsg {
-  const cards = live(s);
-  return {
-    phase: s.phase,
-    total: cards.length,
-    revealed: cards.filter((c) => c.revealedAt).length,
-    showing: Boolean(s.currentId),
-  };
-}
-
 const UNREADABLE: CardContent = { message: "⚠️ This card couldn't be opened." };
 
 export function useDisplaySession() {
@@ -110,7 +96,6 @@ export function useDisplaySession() {
   const [everOnline, setEverOnline] = useState(false);
   const ref = useRef<DisplaySession | null>(null);
   const contents = useRef(new Map<string, CardContent>()); // id → decrypted, revealed only
-  const hosts = useRef(new Map<string, string | undefined>()); // host client id → its public key
 
   /** Rebuild the revealed list from the session + decrypted contents. */
   const refreshRevealed = useCallback(() => {
@@ -119,41 +104,17 @@ export function useDisplaySession() {
     const list = s.cards
       .filter((c) => c.revealedAt && !c.removed && contents.current.has(c.id))
       .sort((a, b) => (a.revealedAt ?? 0) - (b.revealedAt ?? 0))
-      .map((c) => ({ id: c.id, content: contents.current.get(c.id)! }));
+      .map((c) => ({ id: c.id, number: c.revealNo, content: contents.current.get(c.id)! }));
     setRevealedCards(list);
-  }, []);
-
-  /** Send each host remote the revealed cards, encrypted to that host's key. */
-  const pushRevealedToHosts = useCallback((only?: string) => {
-    const s = ref.current;
-    if (!s) return;
-    const items = s.cards
-      .filter((c) => c.revealedAt && !c.removed && contents.current.has(c.id))
-      .sort((a, b) => (b.revealedAt ?? 0) - (a.revealedAt ?? 0)) // newest first
-      .slice(0, LIMITS.hostListItems)
-      .map((c) => ({ id: c.id, ...contents.current.get(c.id)! }));
-    const list: RevealedList = { currentId: s.currentId, items };
-    for (const [h, pubKey] of hosts.current) {
-      if (!pubKey || (only && h !== only)) continue;
-      void sealJson(pubKey, list)
-        .then((sealed) => getTransport().send(clientInbox(s.room, h), "revealed", sealed))
-        .catch(() => {});
-    }
   }, []);
 
   const commit = useCallback((next: DisplaySession) => {
     ref.current = next;
     save(next);
     setSession(next);
-    const status = toStatus(next);
-    for (const h of hosts.current.keys()) {
-      getTransport()
-        .send(clientInbox(next.room, h), "status", status)
-        .catch(() => {});
-    }
   }, []);
 
-  /** Decrypt a card (cached), remember it as revealed, update loop + hosts. */
+  /** Decrypt a card (cached). */
   const decrypt = useCallback(
     async (s: DisplaySession, id: string): Promise<CardContent> => {
       const cached = contents.current.get(id);
@@ -176,11 +137,11 @@ export function useDisplaySession() {
   const showCard = useCallback(
     async (s: DisplaySession, id: string) => {
       const content = await decrypt(s, id);
-      if (ref.current?.currentId === id) setCurrent({ id, content });
+      const number = s.cards.find((c) => c.id === id)?.revealNo;
+      if (ref.current?.currentId === id) setCurrent({ id, number, content });
       refreshRevealed();
-      pushRevealedToHosts();
     },
-    [decrypt, refreshRevealed, pushRevealedToHosts],
+    [decrypt, refreshRevealed],
   );
 
   const startReveal = useCallback(() => {
@@ -188,8 +149,7 @@ export function useDisplaySession() {
     if (!s || s.phase === "ended") return;
     setCurrent(null);
     commit({ ...s, phase: "revealing", currentId: undefined });
-    pushRevealedToHosts();
-  }, [commit, pushRevealedToHosts]);
+  }, [commit]);
 
   const revealNext = useCallback(() => {
     const s = ref.current;
@@ -198,29 +158,30 @@ export function useDisplaySession() {
     const remaining = live(s).filter((c) => !c.revealedAt);
     if (remaining.length === 0) {
       commit({ ...s, phase: "revealing", currentId: undefined });
-      pushRevealedToHosts();
       return;
     }
     const pick = remaining[randomIndex(remaining.length)];
+    // Numbers follow reveal order (random), never arrival order, so a number
+    // can't be matched to who scanned the QR when.
+    const revealNo = Math.max(0, ...s.cards.map((c) => c.revealNo ?? 0)) + 1;
     const next: DisplaySession = {
       ...s,
       phase: "revealing",
       currentId: pick.id,
       cards: s.cards.map((c) =>
-        c.id === pick.id ? { ...c, revealedAt: Date.now() } : c,
+        c.id === pick.id ? { ...c, revealedAt: Date.now(), revealNo } : c,
       ),
     };
     commit(next);
     void showCard(next, pick.id);
-  }, [commit, showCard, pushRevealedToHosts]);
+  }, [commit, showCard]);
 
   const backToCollecting = useCallback(() => {
     const s = ref.current;
     if (!s || s.phase === "ended") return;
     setCurrent(null);
     commit({ ...s, phase: "collecting", currentId: undefined });
-    pushRevealedToHosts();
-  }, [commit, pushRevealedToHosts]);
+  }, [commit]);
 
   /** Remove a card (e.g. a prank). Its text and ciphertext are dropped. */
   const removeCard = useCallback(
@@ -238,9 +199,17 @@ export function useDisplaySession() {
         ),
       });
       refreshRevealed();
-      pushRevealedToHosts();
     },
-    [commit, refreshRevealed, pushRevealedToHosts],
+    [commit, refreshRevealed],
+  );
+
+  /** Remove the revealed card shown as #N (host remote). */
+  const removeByNumber = useCallback(
+    (n: number) => {
+      const card = ref.current?.cards.find((c) => c.revealNo === n && !c.removed);
+      if (card) removeCard(card.id);
+    },
+    [removeCard],
   );
 
   const endParty = useCallback(() => {
@@ -263,7 +232,6 @@ export function useDisplaySession() {
   );
 
   const newParty = useCallback(async () => {
-    hosts.current.clear();
     contents.current.clear();
     setCurrent(null);
     setRevealedCards([]);
@@ -276,7 +244,6 @@ export function useDisplaySession() {
     (event: string, payload: unknown) => {
       const s = ref.current;
       if (!s) return;
-      const t = getTransport();
 
       if (event === "card") {
         // Fire-and-forget from guests: no reply. The guest checks the
@@ -294,31 +261,18 @@ export function useDisplaySession() {
         return;
       }
 
-      if (event === "host-hello" || event === "cmd") {
+      if (event === "cmd") {
+        // Host remote, fire-and-forget. Only obey the host token from the host QR.
         const p = (payload ?? {}) as Partial<CmdMsg>;
         if (p.token !== s.hostToken) return;
-        if (typeof p.replyTo !== "string" || p.replyTo.length > 64) return;
-        const pubKey =
-          typeof p.pubKey === "string" && p.pubKey.length < 200 ? p.pubKey : undefined;
-        const isNewHost = hosts.current.get(p.replyTo) !== pubKey;
-        hosts.current.set(p.replyTo, pubKey);
-        if (event === "cmd") {
-          if (p.action === "start-reveal") startReveal();
-          else if (p.action === "next") revealNext();
-          else if (p.action === "back-to-collecting") backToCollecting();
-          else if (p.action === "end") endParty();
-          else if (p.action === "remove" && typeof p.cardId === "string") removeCard(p.cardId);
-        }
-        // Always answer the sender (commit() also notifies all hosts).
-        const latest = ref.current;
-        if (latest)
-          t.send(clientInbox(s.room, p.replyTo), "status", toStatus(latest)).catch(
-            () => {},
-          );
-        if (event === "host-hello" && isNewHost) pushRevealedToHosts(p.replyTo);
+        if (p.action === "start-reveal") startReveal();
+        else if (p.action === "next") revealNext();
+        else if (p.action === "back-to-collecting") backToCollecting();
+        else if (p.action === "end") endParty();
+        else if (p.action === "remove" && Number.isInteger(p.cardNo)) removeByNumber(p.cardNo!);
       }
     },
-    [commit, startReveal, revealNext, backToCollecting, endParty, removeCard, pushRevealedToHosts],
+    [commit, startReveal, revealNext, backToCollecting, endParty, removeByNumber],
   );
 
   // Load (after a refresh) or create the session; re-open already revealed cards.
@@ -344,11 +298,11 @@ export function useDisplaySession() {
     };
   }, [decrypt, showCard, refreshRevealed]);
 
-  // Listen on the display inbox while the party is running.
+  // Listen on the display inbox while the party is running. After End party
+  // this stops listening, so the display's one connection is released
+  // (Supabase closes the socket shortly after its last channel goes).
   const room = session?.room;
   const ended = session?.phase === "ended";
-  // After End party this stops listening, so the display's one connection is
-  // released (Supabase closes the socket shortly after its last channel goes).
   useEffect(() => {
     if (!room || ended) return;
     return getTransport().listen(displayInbox(room), handleMessage, (status) => {

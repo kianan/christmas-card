@@ -22,6 +22,7 @@ export interface StageCard {
 /** A revealed card shown in the looping display. */
 export interface LoopItem {
   id: string;
+  number?: number; // reveal number, shown as #N
   content: CardContent;
 }
 
@@ -55,12 +56,13 @@ export interface HangingCardProps {
 
 export interface RevealProps {
   content: CardContent;
-  index: number; // 1-based position in the reveal order
-  total: number;
+  /** Reveal number shown as #N — the host removes pranks by this number. */
+  number?: number;
 }
 
 export interface LoopCardProps {
   content: CardContent;
+  number?: number;
 }
 
 export interface CardArt {

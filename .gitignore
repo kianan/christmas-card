@@ -42,3 +42,9 @@ next-env.d.ts
 
 # example env is safe to commit
 !.env.example
+
+# local HTTPS dev certificate (npm run dev:lan)
+.certs/
+
+# private roadmap / todo tracker
+product_roadmap.md

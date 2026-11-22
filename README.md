@@ -1,36 +1,45 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Secret Christmas Cards
 
-## Getting Started
+Guests scan a QR code on the party screen, write a secret card, and it hangs on
+a virtual tree. The host starts the reveal; cards are picked at random and
+opened on the big screen.
 
-First, run the development server:
+## Privacy model
+
+- **No database.** The party lives only in the display tab (memory +
+  `sessionStorage`). Closing the tab or pressing *End party* wipes it.
+- **End-to-end encrypted.** The display creates a key pair; the public key goes
+  to guests inside the QR link's `#fragment` (never sent to a server). Cards are
+  encrypted on the phone (ECDH P-256 → HKDF → AES-GCM). The relay and the host
+  remote only see ciphertext / counts.
+- **Relay only.** Supabase Realtime *Broadcast* passes messages between devices
+  and stores nothing.
+
+## Pages
+
+| Route | Who | What |
+|---|---|---|
+| `/display` | TV / projector | Tree, guest QR, reveal. Keys: `R` start reveal, `N`/`Space` next, `H` host QR, `F` fullscreen |
+| `/write#r=…&k=…` | Guests (via QR) | Write and send a card |
+| `/host#r=…&t=…` | Host's phone (press `H` on display) | Start reveal / next / end — counts only |
+
+## Run locally
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Without env vars it runs in **local mode** (tabs of the same browser talk via
+`BroadcastChannel`). Append `?local` to any URL to force it.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+To work across devices, copy `.env.example` to `.env.local` and fill in your
+Supabase project URL and publishable key.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Code map
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `src/lib/transport/` — swappable message relay (`supabase`, `local`)
+- `src/lib/crypto.ts` — card encryption
+- `src/lib/protocol.ts` — message types between display / guest / host
+- `src/party/useDisplaySession.ts` — party state machine (display only)
+- `src/scene/` — art themes; `themes/plain` is the placeholder PoC theme

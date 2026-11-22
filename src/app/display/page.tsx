@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 import { useOrigin, useSearch, useTransportName } from "@/lib/hooks";
 import { downloadFile, keepsakeFilename, keepsakeHtml } from "@/lib/keepsake";
 import { useDisplaySession } from "@/party/useDisplaySession";
 import { cardArt, getScene, nextScene, Stage } from "@/scene";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { EndedScreen } from "./EndedScreen";
 import { ReceivedFeed } from "./ReceivedFeed";
 
 /** Confirmations are in-page overlays (not confirm()), so TV remotes can use them. */
@@ -52,6 +54,7 @@ export default function DisplayPage() {
   } = useDisplaySession();
   const [showHostQr, setShowHostQr] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
+  const router = useRouter();
   const transportName = useTransportName();
   const origin = useOrigin();
   const search = useSearch();
@@ -137,13 +140,7 @@ export default function DisplayPage() {
   }
 
   if (phase === "ended") {
-    return (
-      <main className="narrow">
-        <h1>🎅 The party has ended</h1>
-        <p>All cards and keys have been wiped from this screen.</p>
-        <button onClick={() => void newParty()}>Start a new party</button>
-      </main>
-    );
+    return <EndedScreen onHome={() => router.push(`/${search}`)} onNewParty={() => void newParty()} />;
   }
 
   const guestUrl = `${origin}/write${search}#r=${session.room}&k=${session.publicKey}`;

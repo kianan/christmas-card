@@ -66,7 +66,10 @@ button:focus-visible,
 .button:focus-visible,
 a:focus-visible,
 input:focus-visible,
-textarea:focus-visible {
+textarea:focus-visible,
+/* Pre-selected TV controls: show the ring even before any key is pressed
+   (browsers hide :focus-visible after a page load with no input yet). */
+.focus-ring:focus {
   outline: 3px solid var(--gold);
   outline-offset: 3px;
   box-shadow: 0 0 0 7px #e8c26a40;
@@ -627,4 +630,13 @@ button.danger {
 
 .dialog-hint {
   font-size: 0.85rem !important;
+}
+
+.ended-actions {
+  justify-content: center;
+}
+
+.ended-actions button {
+  font-size: 1.2rem;
+  padding: 0.85rem 1.4rem;
 }

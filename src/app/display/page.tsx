@@ -125,6 +125,7 @@ export default function DisplayPage() {
         </div>
       )}
 
+      <div className="display-body">
       <section className="display-main">
         <h1>🎄 Secret Christmas Cards</h1>
         <Tree
@@ -161,6 +162,7 @@ export default function DisplayPage() {
           </>
         )}
       </aside>
+      </div>
 
       <footer className="controls">
         {phase === "collecting" ? (
@@ -189,11 +191,12 @@ export default function DisplayPage() {
         <button className="secondary" onClick={() => confirmEnd() && endParty()}>
           End party (E)
         </button>
-        <span className="muted">
-          {connection === "online" ? "● Live" : connection === "error" ? "● Offline" : "● Connecting…"}
-          {transportName ? ` · ${transportName}` : ""}
-        </span>
       </footer>
+
+      <span className="connection-status muted">
+        {connection === "online" ? "● Live" : connection === "error" ? "● Offline" : "● Connecting…"}
+        {transportName ? ` · ${transportName}` : ""}
+      </span>
 
       {phase === "revealing" && (current || remaining === 0) && (
         <div className="overlay" onClick={revealNext}>

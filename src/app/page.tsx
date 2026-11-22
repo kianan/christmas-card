@@ -6,7 +6,7 @@ import { useSearch } from "@/lib/hooks";
 export default function Home() {
   const search = useSearch();
   return (
-    <main className="narrow">
+    <main className="narrow centered">
       <h1>🎄 Secret Christmas Cards</h1>
       <p>
         Open the party screen on the TV or projector. Guests scan its QR code,

@@ -467,3 +467,35 @@ label {
   padding: 0.4rem 0.9rem;
   font-size: 0.9rem;
 }
+
+/* ---------- display: "card received" feed under the QR ---------- */
+.received-feed {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-height: 0;
+  overflow: hidden;
+  /* fade out the oldest lines if the column is short */
+  mask-image: linear-gradient(to bottom, #000 70%, transparent);
+}
+
+.received-feed li {
+  font-size: 0.95rem;
+  color: var(--muted);
+  animation: feed-in 0.6s ease-out both;
+}
+
+.received-feed li:first-child {
+  color: var(--text);
+}
+
+.received-feed strong {
+  color: var(--gold);
+  letter-spacing: 0.05em;
+}
+
+@keyframes feed-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}

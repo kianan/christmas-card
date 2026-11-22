@@ -20,7 +20,6 @@ import {
   displayInbox,
   isCardMsg,
   LIMITS,
-  type AckMsg,
   type CmdMsg,
   type Phase,
   type RevealedList,
@@ -34,6 +33,8 @@ export interface StoredCard extends SealedCard {
   revealedAt?: number;
   /** Removed by the host (prank). Kept as a tombstone so other cards keep their slots. */
   removed?: boolean;
+  /** First character of the sender's name (sent in the clear), for "received from K••••". */
+  initial?: string;
 }
 
 export interface DisplaySession {
@@ -276,23 +277,19 @@ export function useDisplaySession() {
       const t = getTransport();
 
       if (event === "card") {
+        // Fire-and-forget from guests: no reply. The guest checks the
+        // "Card received from K••••" feed on screen instead.
         if (!isCardMsg(payload)) return;
-        const { cardId, replyTo, epk, iv, ct } = payload;
-        const reply = (ack: Omit<AckMsg, "cardId">) =>
-          t
-            .send(clientInbox(s.room, replyTo), "ack", { cardId, ...ack })
-            .catch(() => {});
-        if (s.phase === "ended")
-          return void reply({ ok: false, reason: "This party has ended." });
-        // Known id (incl. a removed one): ack without re-adding.
-        if (s.cards.some((c) => c.id === cardId)) return void reply({ ok: true });
-        if (s.cards.length >= LIMITS.maxCards)
-          return void reply({ ok: false, reason: "The tree is full!" });
+        if (s.phase === "ended") return;
+        const { cardId, epk, iv, ct, initial } = payload;
+        // Known id (a retry, or a removed card): don't add it again.
+        if (s.cards.some((c) => c.id === cardId)) return;
+        if (s.cards.length >= LIMITS.maxCards) return;
         commit({
           ...s,
-          cards: [...s.cards, { id: cardId, epk, iv, ct, receivedAt: Date.now() }],
+          cards: [...s.cards, { id: cardId, epk, iv, ct, initial, receivedAt: Date.now() }],
         });
-        return void reply({ ok: true });
+        return;
       }
 
       if (event === "host-hello" || event === "cmd") {

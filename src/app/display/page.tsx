@@ -5,6 +5,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { useOrigin, useSearch, useTransportName } from "@/lib/hooks";
 import { useDisplaySession } from "@/party/useDisplaySession";
 import { cardArt, getScene, nextScene, Stage } from "@/scene";
+import { ReceivedFeed } from "./ReceivedFeed";
 
 const confirmEnd = () =>
   confirm("End the party? All cards will be wiped for good.");
@@ -178,6 +179,7 @@ export default function DisplayPage() {
             </a>
             <p className="stat">{total} 🎴</p>
             <p className="muted">cards on the tree</p>
+            <ReceivedFeed cards={session.cards} />
           </>
         ) : (
           <>

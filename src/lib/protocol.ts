@@ -2,8 +2,8 @@
  * Wire protocol. Event names must be lowercase (Supabase matches them
  * case-insensitively).
  *
- *   guest  → display : "card"       CardMsg
- *   display → guest  : "ack"        AckMsg
+ *   guest  → display : "card"       CardMsg     (one HTTP POST, fire-and-forget:
+ *                                                guests never open a WebSocket)
  *   host   → display : "host-hello" HostHelloMsg
  *   host   → display : "cmd"        CmdMsg
  *   display → host   : "status"     StatusMsg   (counts only)
@@ -29,14 +29,28 @@ export const clientInbox = (room: string, clientId: string) =>
 
 export interface CardMsg extends SealedCard {
   cardId: string;
-  replyTo: string; // guest's client id
+  /**
+   * First character of the sender's name, in the clear, so the display can
+   * show "Card received from K••••". The full name stays inside the
+   * encrypted card. Absent for anonymous cards.
+   */
+  initial?: string;
 }
 
-export interface AckMsg {
-  cardId: string;
-  ok: boolean;
-  reason?: string;
+/** First character (grapheme, so emoji and accents stay whole) of a name. */
+export function nameInitial(name: string | undefined): string | undefined {
+  const trimmed = name?.trim();
+  if (!trimmed) return undefined;
+  const first =
+    typeof Intl !== "undefined" && "Segmenter" in Intl
+      ? new Intl.Segmenter().segment(trimmed)[Symbol.iterator]().next().value?.segment
+      : Array.from(trimmed)[0];
+  return first?.toLocaleUpperCase();
 }
+
+/** "K" → "K••••" (fixed length, so the name's length isn't revealed). */
+export const maskName = (initial: string | undefined) =>
+  initial ? `${initial}••••` : "a Secret Santa";
 
 export interface HostHelloMsg {
   token: string;
@@ -82,11 +96,11 @@ export function isCardMsg(p: unknown): p is CardMsg {
   if (!p || typeof p !== "object") return false;
   const c = p as Record<string, unknown>;
   return (
-    ["cardId", "replyTo", "epk", "iv", "ct"].every(
+    ["cardId", "epk", "iv", "ct"].every(
       (k) => typeof c[k] === "string" && (c[k] as string).length > 0,
     ) &&
     (c.ct as string).length <= LIMITS.maxCiphertextChars &&
     (c.cardId as string).length <= 64 &&
-    (c.replyTo as string).length <= 64
+    (c.initial === undefined || (typeof c.initial === "string" && c.initial.length <= 8))
   );
 }

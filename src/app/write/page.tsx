@@ -3,16 +3,8 @@
 import { useRef, useState } from "react";
 import { randomId, sealCard } from "@/lib/crypto";
 import { useHashParams } from "@/lib/hooks";
-import {
-  clientInbox,
-  displayInbox,
-  LIMITS,
-  type AckMsg,
-  type CardMsg,
-} from "@/lib/protocol";
+import { displayInbox, LIMITS, maskName, nameInitial, type CardMsg } from "@/lib/protocol";
 import { getTransport } from "@/lib/transport";
-
-const ACK_TIMEOUT_MS = 12_000;
 
 export default function WritePage() {
   const params = useHashParams();
@@ -20,8 +12,8 @@ export default function WritePage() {
   const [from, setFrom] = useState("");
   const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [error, setError] = useState("");
+  const [sentAs, setSentAs] = useState<string | undefined>(undefined); // initial of the last sent card
   const pendingCardId = useRef<string | null>(null); // reused on retry so the tree never gets duplicates
-  const clientId = useRef<string | null>(null);
 
   if (params === null) return <main className="narrow">Loading…</main>;
 
@@ -41,61 +33,45 @@ export default function WritePage() {
     setMessage(v);
   };
 
+  /**
+   * Fire-and-forget: seal on this phone, then one HTTP POST to the relay.
+   * No WebSocket and no reply — the party screen shows
+   * "Card received from K••••" instead.
+   */
   async function send() {
     if (!message.trim()) return;
     setState("sending");
     setError("");
-    const t = getTransport();
     const cardId = (pendingCardId.current ??= randomId());
-    const me = (clientId.current ??= randomId());
-    let unsub: (() => void) | undefined;
+    const initial = nameInitial(from);
     try {
       const sealed = await sealCard(key, {
         message: message.trim(),
         from: from.trim() || undefined,
       });
-      const ack = await new Promise<AckMsg>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error("timeout")), ACK_TIMEOUT_MS);
-        t.listen(clientInbox(room, me), (event, payload) => {
-          const a = payload as AckMsg;
-          if (event === "ack" && a?.cardId === cardId) {
-            clearTimeout(timer);
-            resolve(a);
-          }
-        })
-          .then((u) => {
-            unsub = u;
-            const msg: CardMsg = { ...sealed, cardId, replyTo: me };
-            return t.send(displayInbox(room), "card", msg);
-          })
-          .catch((e) => {
-            clearTimeout(timer);
-            reject(e);
-          });
-      });
-      if (!ack.ok) throw new Error(ack.reason ?? "The party screen didn't accept the card.");
+      const msg: CardMsg = { ...sealed, cardId, initial };
+      await getTransport().send(displayInbox(room), "card", msg);
       pendingCardId.current = null;
+      setSentAs(initial);
       setMessage("");
       setFrom("");
       setState("sent");
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setError(
-        msg === "timeout"
-          ? "Couldn't reach the party screen. Make sure it's still open, then try again."
-          : msg,
-      );
+    } catch {
+      setError("Couldn't send your card. Check your connection and try again.");
       setState("error");
-    } finally {
-      unsub?.();
     }
   }
 
   if (state === "sent") {
     return (
       <main className="narrow">
-        <h1>🎄 Your card is on the tree!</h1>
+        <h1>🎄 Card sent!</h1>
         <p>It&apos;s sealed. Nobody can read it until the reveal.</p>
+        <p className="muted">
+          Look for <strong>&ldquo;Card received from {maskName(sentAs)}&rdquo;</strong> under
+          the QR code on the party screen. If it doesn&apos;t appear, the screen may have
+          been closed. Just send it again.
+        </p>
         <button onClick={() => setState("idle")}>Write another card</button>
       </main>
     );
@@ -145,7 +121,7 @@ export default function WritePage() {
         {state === "error" && <p className="error">{error}</p>}
         <button type="submit" disabled={state === "sending" || !message.trim()}>
           {state === "sending"
-            ? "Hanging it on the tree…"
+            ? "Sending…"
             : state === "error"
               ? "Try again"
               : "Seal & send 🎄"}

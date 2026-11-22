@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { useOrigin, useSearch, useTransportName } from "@/lib/hooks";
 import { useDisplaySession } from "@/party/useDisplaySession";
-import { theme } from "@/scene";
+import { cardArt, getScene, nextScene, Stage } from "@/scene";
 
 const confirmEnd = () =>
   confirm("End the party? All cards will be wiped for good.");
@@ -36,6 +36,7 @@ export default function DisplayPage() {
     backToCollecting,
     endParty,
     newParty,
+    setScene,
   } = useDisplaySession();
   const [showHostQr, setShowHostQr] = useState(false);
   const transportName = useTransportName();
@@ -46,6 +47,8 @@ export default function DisplayPage() {
   const total = session?.cards.length ?? 0;
   const revealed = session?.cards.filter((c) => c.revealedAt).length ?? 0;
   const remaining = total - revealed;
+  // Saved choice wins; otherwise ?scene=<id> in the URL; otherwise the default.
+  const scene = getScene(session?.sceneId ?? new URLSearchParams(search).get("scene"));
 
   // Keyboard shortcuts for a laptop driving the projector.
   useEffect(() => {
@@ -61,11 +64,12 @@ export default function DisplayPage() {
         e.preventDefault();
         revealNext();
       } else if (k === "escape" && phase === "revealing") backToCollecting();
+      else if (k === "s") setScene(nextScene(scene.id).id);
       else if (k === "e" && confirmEnd()) endParty();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [phase, startReveal, revealNext, backToCollecting, endParty]);
+  }, [phase, scene.id, startReveal, revealNext, backToCollecting, endParty, setScene]);
 
   // Warn before closing the tab while cards are hanging.
   useEffect(() => {
@@ -108,7 +112,7 @@ export default function DisplayPage() {
 
   const guestUrl = `${origin}/write${search}#r=${session.room}&k=${session.publicKey}`;
   const hostUrl = `${origin}/host${search}#r=${session.room}&t=${session.hostToken}`;
-  const { Tree, RevealCard } = theme;
+  const { RevealCard } = cardArt;
 
   return (
     <div className="display">
@@ -128,7 +132,9 @@ export default function DisplayPage() {
       <div className="display-body">
       <section className="display-main">
         <h1>🎄 Secret Christmas Cards</h1>
-        <Tree
+        <Stage
+          scene={scene}
+          cardArt={cardArt}
           cards={session.cards.map((c) => ({ id: c.id, revealed: Boolean(c.revealedAt) }))}
         />
       </section>
@@ -179,6 +185,9 @@ export default function DisplayPage() {
             </button>
           </>
         )}
+        <button className="secondary" onClick={() => setScene(nextScene(scene.id).id)}>
+          Scene: {scene.name} (S)
+        </button>
         <button className="secondary" onClick={() => setShowHostQr((v) => !v)}>
           {showHostQr ? "Hide host remote (H)" : "Host remote (H)"}
         </button>

@@ -19,7 +19,7 @@ opened on the big screen.
 
 | Route | Who | What |
 |---|---|---|
-| `/display` | TV / projector | Tree, guest QR, reveal. Keys: `R` start reveal, `N`/`Space` next, `Esc` back to collecting, `E` end party, `H` host QR, `F` fullscreen |
+| `/display` | TV / projector | Tree, guest QR, reveal. Keys: `R` start reveal, `N`/`Space` next, `Esc` back to collecting, `E` end party, `S` switch scene, `H` host QR, `F` fullscreen |
 | `/write#r=…&k=…` | Guests (via QR) | Write and send a card |
 | `/host#r=…&t=…` | Host's phone (press `H` on display) | Start reveal / next / end — counts only |
 
@@ -42,4 +42,5 @@ Supabase project URL and publishable key.
 - `src/lib/crypto.ts` — card encryption
 - `src/lib/protocol.ts` — message types between display / guest / host
 - `src/party/useDisplaySession.ts` — party state machine (display only)
-- `src/scene/` — art themes; `themes/plain` is the placeholder PoC theme
+- `src/scene/` — swappable art: `scenes/` (backgrounds + hang settings), `cards/` (card art), `hang/` (centre-out layout), `Stage.tsx`
+- `public/scenes/` — looping background videos (see `public/scenes/CREDITS.md`). Pick one with `?scene=tree|tree-lights|fireplace|fireplace-logs|plain` or press `S`

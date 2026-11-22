@@ -40,6 +40,7 @@ export interface DisplaySession {
   phase: Phase;
   cards: StoredCard[]; // still encrypted; decrypted one at a time on reveal
   currentId?: string;
+  sceneId?: string; // chosen background scene (resolved by the display page)
 }
 
 export interface RevealedCard {
@@ -164,6 +165,15 @@ export function useDisplaySession() {
     commit({ ...s, phase: "ended", cards: [], privateJwk: {}, currentId: undefined });
   }, [commit]);
 
+  const setScene = useCallback(
+    (sceneId: string) => {
+      const s = ref.current;
+      if (!s || s.phase === "ended") return;
+      commit({ ...s, sceneId });
+    },
+    [commit],
+  );
+
   const newParty = useCallback(async () => {
     hosts.current.clear();
     setCurrent(null);
@@ -268,5 +278,6 @@ export function useDisplaySession() {
     backToCollecting,
     endParty,
     newParty,
+    setScene,
   };
 }

@@ -145,8 +145,7 @@ export default function DisplayPage() {
       )}
 
       <div className="display-body">
-      <section className="display-main">
-        <h1>🎄 Secret Christmas Cards</h1>
+      <section className="display-main" aria-label="Secret Christmas Cards">
         <Stage
           scene={scene}
           cardArt={cardArt}

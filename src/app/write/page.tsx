@@ -4,13 +4,16 @@ import { useRef, useState } from "react";
 import { randomId, sealCard } from "@/lib/crypto";
 import { useHashParams } from "@/lib/hooks";
 import { displayInbox, LIMITS, maskName, nameInitial, type CardMsg } from "@/lib/protocol";
-import { getTransport } from "@/lib/transport";
+import { getTransport, RelayBusyError } from "@/lib/transport";
+
+const RETRY_DELAYS_MS = [1_000, 3_000, 6_000];
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export default function WritePage() {
   const params = useHashParams();
   const [message, setMessage] = useState("");
   const [from, setFrom] = useState("");
-  const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [state, setState] = useState<"idle" | "sending" | "retrying" | "sent" | "error">("idle");
   const [error, setError] = useState("");
   const [sentAs, setSentAs] = useState<string | undefined>(undefined); // initial of the last sent card
   const pendingCardId = useRef<string | null>(null); // reused on retry so the tree never gets duplicates
@@ -50,14 +53,29 @@ export default function WritePage() {
         from: from.trim() || undefined,
       });
       const msg: CardMsg = { ...sealed, cardId, initial };
-      await getTransport().send(displayInbox(room), "card", msg);
+      // Retry a few times on hiccups or when the service is busy. Same cardId
+      // every time, so the tree never shows a duplicate.
+      for (let attempt = 0; ; attempt++) {
+        try {
+          await getTransport().send(displayInbox(room), "card", msg);
+          break;
+        } catch (e) {
+          if (attempt >= RETRY_DELAYS_MS.length) throw e;
+          setState("retrying");
+          await sleep(RETRY_DELAYS_MS[attempt]);
+        }
+      }
       pendingCardId.current = null;
       setSentAs(initial);
       setMessage("");
       setFrom("");
       setState("sent");
-    } catch {
-      setError("Couldn't send your card. Check your connection and try again.");
+    } catch (e) {
+      setError(
+        e instanceof RelayBusyError
+          ? "The party service is very busy right now. Wait a minute, then tap Try again. Your card won't be sent twice."
+          : "Couldn't send your card. Check your connection and try again.",
+      );
       setState("error");
     }
   }
@@ -119,9 +137,14 @@ export default function WritePage() {
           />
         </div>
         {state === "error" && <p className="error">{error}</p>}
-        <button type="submit" disabled={state === "sending" || !message.trim()}>
+        <button
+          type="submit"
+          disabled={state === "sending" || state === "retrying" || !message.trim()}
+        >
           {state === "sending"
             ? "Sending…"
+            : state === "retrying"
+              ? "Busy, retrying…"
             : state === "error"
               ? "Try again"
               : "Seal & send 🎄"}

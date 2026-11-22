@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { generateKeyPair, openJson, randomId, type SealedCard } from "@/lib/crypto";
 import { useHashParams } from "@/lib/hooks";
 import {
@@ -11,10 +11,22 @@ import {
   type RevealedList,
   type StatusMsg,
 } from "@/lib/protocol";
-import { getTransport } from "@/lib/transport";
+import { getTransport, type ListenStatus } from "@/lib/transport";
 
 const HELLO_EVERY_MS = 10_000;
 const STALE_AFTER_MS = 25_000;
+
+/** True while this page is on screen (phone unlocked, tab in front). */
+function usePageVisible(): boolean {
+  return useSyncExternalStore(
+    (cb) => {
+      document.addEventListener("visibilitychange", cb);
+      return () => document.removeEventListener("visibilitychange", cb);
+    },
+    () => document.visibilityState === "visible",
+    () => true,
+  );
+}
 
 interface HostIdentity {
   clientId: string;
@@ -32,10 +44,15 @@ export default function HostPage() {
   const [status, setStatus] = useState<StatusMsg | null>(null);
   const [revealed, setRevealed] = useState<RevealedList | null>(null);
   const [stale, setStale] = useState(false);
+  const [relay, setRelay] = useState<ListenStatus>("connecting");
   const lastSeen = useRef(0);
+  const visible = usePageVisible();
+  // Only stay connected (and keep checking in) while it's useful: the party is
+  // still on and this page is on screen. Otherwise the connection is released.
+  const active = visible && status?.phase !== "ended";
 
   useEffect(() => {
-    if (!room || !token) return;
+    if (!room || !token || !active) return;
     const t = getTransport();
     let cancelled = false;
     let unsub: (() => void) | undefined;
@@ -51,18 +68,24 @@ export default function HostPage() {
         t
           .send(displayInbox(room), "host-hello", { token, replyTo: clientId, pubKey: publicKey })
           .catch(() => {});
-      const u = await t.listen(clientInbox(room, clientId), (event, payload) => {
-        lastSeen.current = Date.now();
-        setStale(false);
-        if (event === "status") setStatus(payload as StatusMsg);
-        else if (event === "revealed")
-          openJson<RevealedList>(privateJwk, payload as SealedCard)
-            .then(setRevealed)
-            .catch(() => {});
-      });
-      if (cancelled) return u();
+      if (cancelled) return;
+      const u = t.listen(
+        clientInbox(room, clientId),
+        (event, payload) => {
+          lastSeen.current = Date.now();
+          setStale(false);
+          if (event === "status") setStatus(payload as StatusMsg);
+          else if (event === "revealed")
+            openJson<RevealedList>(privateJwk, payload as SealedCard)
+              .then(setRevealed)
+              .catch(() => {});
+        },
+        (st) => {
+          setRelay(st);
+          if (st === "online") void hello(); // (re)connected: ask for fresh status
+        },
+      );
       unsub = u;
-      void hello();
       timer = setInterval(() => {
         void hello();
         setStale(Date.now() - lastSeen.current > STALE_AFTER_MS);
@@ -74,7 +97,7 @@ export default function HostPage() {
       if (timer) clearInterval(timer);
       unsub?.();
     };
-  }, [room, token]);
+  }, [room, token, active]);
 
   if (params === null) return <main className="narrow">Loading…</main>;
   if (!room || !token) {
@@ -113,10 +136,16 @@ export default function HostPage() {
         <p className="muted">Connecting to the party screen…</p>
       ) : (
         <>
-          {stale && (
+          {relay === "busy" ? (
             <p className="error">
-              Lost contact with the party screen. Is it still open?
+              The party service is overloaded. Retrying automatically…
             </p>
+          ) : (
+            stale && (
+              <p className="error">
+                Lost contact with the party screen. Is it still open?
+              </p>
+            )
           )}
           {status.phase === "ended" ? (
             <p>The party has ended. All cards were wiped.</p>

@@ -34,6 +34,7 @@ export default function DisplayPage() {
     current,
     revealedCards,
     connection,
+    everOnline,
     startReveal,
     revealNext,
     backToCollecting,
@@ -138,10 +139,17 @@ export default function DisplayPage() {
           Supabase environment variables to work across devices.
         </div>
       )}
-      {connection === "error" && (
-        <div className="banner">
-          Couldn&apos;t connect to the realtime relay. Check your connection and
-          refresh. Cards on the tree are kept.
+      {everOnline && connection === "busy" && (
+        <div className="banner warn">
+          ⚠️ The party service is overloaded and has paused this screen. Retrying
+          automatically… Cards sent right now may be lost, so ask guests to wait until
+          the QR code is back. Cards already on the tree are safe.
+        </div>
+      )}
+      {everOnline && connection === "reconnecting" && (
+        <div className="banner warn">
+          Connection lost. Reconnecting… Cards sent right now may be lost. Cards already
+          on the tree are safe.
         </div>
       )}
 
@@ -174,9 +182,32 @@ export default function DisplayPage() {
         ) : phase === "collecting" ? (
           <>
             <h2>Scan to write a secret card</h2>
-            <a className="qr" href={guestUrl} target="_blank" rel="noreferrer">
-              <QRCodeSVG value={guestUrl} size={256} marginSize={0} />
-            </a>
+            <div className="qr-wrap">
+              <a className="qr" href={guestUrl} target="_blank" rel="noreferrer">
+                <QRCodeSVG value={guestUrl} size={256} marginSize={0} />
+              </a>
+              {/* Guests send fire-and-forget: only offer the QR while we can receive. */}
+              {connection !== "online" && (
+                <div className="qr-paused" role="status">
+                  {connection === "busy" && !everOnline ? (
+                    <>
+                      <strong>Party service is full</strong>
+                      <span>
+                        Too many parties are running right now. This screen keeps
+                        trying and the QR code appears as soon as there&apos;s room.
+                      </span>
+                    </>
+                  ) : connection === "connecting" ? (
+                    <strong>Connecting…</strong>
+                  ) : (
+                    <>
+                      <strong>Paused</strong>
+                      <span>Reconnecting, please wait before scanning.</span>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
             <p className="stat">{total} 🎴</p>
             <p className="muted">cards on the tree</p>
             <ReceivedFeed cards={session.cards} />
@@ -224,7 +255,14 @@ export default function DisplayPage() {
       </footer>
 
       <span className="connection-status muted">
-        {connection === "online" ? "● Live" : connection === "error" ? "● Offline" : "● Connecting…"}
+        {
+          {
+            online: "● Live",
+            connecting: "● Connecting…",
+            reconnecting: "● Reconnecting…",
+            busy: "● Service busy, retrying",
+          }[connection]
+        }
         {transportName ? ` · ${transportName}` : ""}
       </span>
 

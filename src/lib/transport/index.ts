@@ -2,7 +2,8 @@ import { createLocalTransport } from "./local";
 import { createSupabaseTransport } from "./supabase";
 import type { Transport } from "./types";
 
-export type { Transport, Unsubscribe, MessageHandler } from "./types";
+export type { Transport, Unsubscribe, MessageHandler, ListenStatus, StatusHandler } from "./types";
+export { RelayBusyError } from "./types";
 
 let instance: Transport | null = null;
 

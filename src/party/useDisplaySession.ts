@@ -25,7 +25,7 @@ import {
   type RevealedList,
   type StatusMsg,
 } from "@/lib/protocol";
-import { getTransport } from "@/lib/transport";
+import { getTransport, type ListenStatus } from "@/lib/transport";
 
 export interface StoredCard extends SealedCard {
   id: string;
@@ -104,9 +104,10 @@ export function useDisplaySession() {
   const [current, setCurrent] = useState<RevealedCard | null>(null);
   /** Decrypted revealed cards, in reveal order — for the looping display. */
   const [revealedCards, setRevealedCards] = useState<RevealedCard[]>([]);
-  const [connection, setConnection] = useState<
-    "connecting" | "online" | "error"
-  >("connecting");
+  /** Live relay status: guests' cards only arrive while this is "online". */
+  const [connection, setConnection] = useState<ListenStatus>("connecting");
+  /** Has this party ever been live? (busy at start = couldn't open the party) */
+  const [everOnline, setEverOnline] = useState(false);
   const ref = useRef<DisplaySession | null>(null);
   const contents = useRef(new Map<string, CardContent>()); // id → decrypted, revealed only
   const hosts = useRef(new Map<string, string | undefined>()); // host client id → its public key
@@ -267,6 +268,7 @@ export function useDisplaySession() {
     setCurrent(null);
     setRevealedCards([]);
     setConnection("connecting");
+    setEverOnline(false);
     commit(await createSession());
   }, [commit]);
 
@@ -345,24 +347,14 @@ export function useDisplaySession() {
   // Listen on the display inbox while the party is running.
   const room = session?.room;
   const ended = session?.phase === "ended";
+  // After End party this stops listening, so the display's one connection is
+  // released (Supabase closes the socket shortly after its last channel goes).
   useEffect(() => {
     if (!room || ended) return;
-    let cancelled = false;
-    let unsub: (() => void) | undefined;
-    getTransport()
-      .listen(displayInbox(room), handleMessage)
-      .then((u) => {
-        if (cancelled) return u();
-        unsub = u;
-        setConnection("online");
-      })
-      .catch(() => {
-        if (!cancelled) setConnection("error");
-      });
-    return () => {
-      cancelled = true;
-      unsub?.();
-    };
+    return getTransport().listen(displayInbox(room), handleMessage, (status) => {
+      setConnection(status);
+      if (status === "online") setEverOnline(true);
+    });
   }, [room, ended, handleMessage]);
 
   return {
@@ -370,6 +362,7 @@ export function useDisplaySession() {
     current,
     revealedCards,
     connection,
+    everOnline,
     startReveal,
     revealNext,
     backToCollecting,

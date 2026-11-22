@@ -6,16 +6,11 @@ import { useOrigin, useSearch, useTransportName } from "@/lib/hooks";
 import { downloadFile, keepsakeFilename, keepsakeHtml } from "@/lib/keepsake";
 import { useDisplaySession } from "@/party/useDisplaySession";
 import { cardArt, getScene, nextScene, Stage } from "@/scene";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { ReceivedFeed } from "./ReceivedFeed";
 
-/** End-party confirmation; nudges towards exporting if the wishes aren't saved yet. */
-const confirmEnd = (unsavedWishes: boolean) =>
-  confirm(
-    unsavedWishes
-      ? "The wishes haven't been exported yet. End the party anyway?\n\nEverything will be wiped for good. Press Cancel, then X, to save them first."
-      : "End the party? All cards will be wiped for good.",
-  );
-const confirmRemove = () => confirm("Remove this card? It can't be brought back.");
+/** Confirmations are in-page overlays (not confirm()), so TV remotes can use them. */
+type Dialog = { kind: "end" } | { kind: "remove"; id: string; number?: number } | null;
 
 /**
  * Fullscreen, plus Keyboard Lock (Chrome/Edge) so Esc reaches the page instead
@@ -56,6 +51,7 @@ export default function DisplayPage() {
     markExported,
   } = useDisplaySession();
   const [showHostQr, setShowHostQr] = useState(false);
+  const [dialog, setDialog] = useState<Dialog>(null);
   const transportName = useTransportName();
   const origin = useOrigin();
   const search = useSearch();
@@ -84,14 +80,14 @@ export default function DisplayPage() {
         revealNext();
       } else if (k === "escape" && phase === "revealing") backToCollecting();
       else if (k === "s") setScene(nextScene(scene.id).id);
-      else if (k === "d" && current && confirmRemove()) removeCard(current.id);
+      else if (k === "d" && current) setDialog({ kind: "remove", id: current.id, number: current.number });
       else if (k === "x") {
         if (exportOffer) closeExport();
         else {
           setShowHostQr(false);
           offerExport();
         }
-      } else if (k === "e" && confirmEnd(unsavedWishes)) endParty();
+      } else if (k === "e") setDialog({ kind: "end" });
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -335,7 +331,7 @@ export default function DisplayPage() {
         >
           {exportOffer ? "Close export (X)" : "Export wishes (X)"}
         </button>
-        <button className="secondary" onClick={() => confirmEnd(unsavedWishes) && endParty()}>
+        <button className="secondary" onClick={() => setDialog({ kind: "end" })}>
           End party (E)
         </button>
       </footer>
@@ -361,7 +357,7 @@ export default function DisplayPage() {
                 className="secondary remove-card"
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (confirmRemove()) removeCard(current.id);
+                  setDialog({ kind: "remove", id: current.id, number: current.number });
                 }}
               >
                 Remove card (D)
@@ -374,6 +370,56 @@ export default function DisplayPage() {
             </div>
           )}
         </div>
+      )}
+
+      {dialog?.kind === "end" && (
+        <ConfirmDialog
+          title="End the party?"
+          body={
+            unsavedWishes
+              ? "The wishes haven't been saved yet. Ending wipes every card for good."
+              : "Every card will be wiped for good."
+          }
+          actions={
+            unsavedWishes
+              ? [
+                  {
+                    label: "Save wishes first",
+                    tone: "primary",
+                    onSelect: () => {
+                      setDialog(null);
+                      setShowHostQr(false);
+                      offerExport();
+                    },
+                  },
+                  { label: "End anyway", tone: "danger", onSelect: () => (setDialog(null), endParty()) },
+                  { label: "Cancel", onSelect: () => setDialog(null) },
+                ]
+              : [
+                  { label: "Cancel", onSelect: () => setDialog(null) },
+                  { label: "End party", tone: "danger", onSelect: () => (setDialog(null), endParty()) },
+                ]
+          }
+          onCancel={() => setDialog(null)}
+        />
+      )}
+      {dialog?.kind === "remove" && (
+        <ConfirmDialog
+          title={dialog.number !== undefined ? `Remove card #${dialog.number}?` : "Remove this card?"}
+          body="It disappears from the tree and the loop, and can't be brought back."
+          actions={[
+            { label: "Cancel", onSelect: () => setDialog(null) },
+            {
+              label: "Remove",
+              tone: "danger",
+              onSelect: () => {
+                removeCard(dialog.id);
+                setDialog(null);
+              },
+            },
+          ]}
+          onCancel={() => setDialog(null)}
+        />
       )}
     </div>
   );

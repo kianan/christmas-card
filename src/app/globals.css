@@ -574,3 +574,57 @@ label {
 .qr-paused button {
   margin-top: 0.5rem;
 }
+
+/* ---------- in-page confirm dialog (TV-remote friendly) ---------- */
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: #000000c0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.dialog {
+  background: var(--panel);
+  border: 1px solid #ffffff26;
+  border-radius: 18px;
+  padding: 2.25rem 2.5rem;
+  max-width: 40rem;
+  width: 100%;
+  box-shadow: 0 24px 80px #000a;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.dialog h2 {
+  font-size: 1.8rem;
+}
+
+.dialog p {
+  font-size: 1.15rem;
+}
+
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.dialog-actions button {
+  font-size: 1.2rem;
+  padding: 0.85rem 1.4rem;
+}
+
+button.danger {
+  color: #ffb4ab;
+  border-color: #ff9a8f80;
+}
+
+.dialog-hint {
+  font-size: 0.85rem !important;
+}

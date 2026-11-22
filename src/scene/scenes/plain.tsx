@@ -17,8 +17,9 @@ export const plainScene: SceneDef = {
   slots: centerOut({
     center: { x: 0.5, y: 0.48 },
     spacing: { x: 0.055, y: 0.14 },
-    region: rect(0.04, 0.08, 0.96, 0.84),
+    region: rect(0.04, 0.08, 0.96, 0.66),
     aspect: ASPECT,
   }),
-  overflowAt: { x: 0.5, y: 0.93 },
+  overflowAt: { x: 0.5, y: 0.72 },
+  loopAt: { x: 0.5, y: 0.85, width: 0.6 },
 };

@@ -1,10 +1,13 @@
 import type { CSSProperties } from "react";
-import type { CardArt, SceneDef, StageCard } from "./types";
+import { RevealedLoop } from "./RevealedLoop";
+import type { CardArt, LoopItem, SceneDef, StageCard } from "./types";
 
 interface StageProps {
   scene: SceneDef;
   cardArt: CardArt;
   cards: StageCard[];
+  /** Revealed cards to cycle through (empty = loop hidden). */
+  revealed?: LoopItem[];
 }
 
 /**
@@ -12,18 +15,19 @@ interface StageProps {
  * (later) animations are layered inside; positions are % of the stage, so
  * they line up with the art at any screen size.
  */
-export function Stage({ scene, cardArt, cards }: StageProps) {
+export function Stage({ scene, cardArt, cards, revealed = [] }: StageProps) {
   const { Background, slots, overflowAt, cardWidth, aspect, dim = 0 } = scene;
-  const { HangingCard } = cardArt;
+  const { HangingCard, LoopCard } = cardArt;
   const hung = cards.slice(0, slots.length);
-  const overflow = cards.length - hung.length;
+  const overflow = cards.slice(slots.length).filter((c) => !c.hidden).length;
+  const visible = cards.filter((c) => !c.hidden).length;
 
   return (
     <div className="stage-area">
       <div
         className="stage"
         style={{ "--aspect": aspect, "--card-w": cardWidth } as CSSProperties}
-        aria-label={`${cards.length} cards hanging`}
+        aria-label={`${visible} cards hanging`}
       >
         <div className="stage-bg">
           {/* key: remount on scene change so the new video starts cleanly */}
@@ -31,6 +35,7 @@ export function Stage({ scene, cardArt, cards }: StageProps) {
         </div>
         {dim > 0 && <div className="stage-dim" style={{ opacity: dim }} />}
         {hung.map((card, i) => {
+          if (card.hidden) return null;
           const s = slots[i];
           return (
             <div
@@ -46,6 +51,7 @@ export function Stage({ scene, cardArt, cards }: StageProps) {
             </div>
           );
         })}
+        <RevealedLoop cards={revealed} area={scene.loopAt} LoopCard={LoopCard} />
         {overflow > 0 && (
           <div
             className="overflow-badge"

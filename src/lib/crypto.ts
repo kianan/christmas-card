@@ -49,7 +49,7 @@ export function randomIndex(n: number): number {
   return buf[0] % n;
 }
 
-export async function generateDisplayKeys(): Promise<{
+export async function generateKeyPair(): Promise<{
   publicKey: string;
   privateJwk: JsonWebKey;
 }> {
@@ -60,6 +60,8 @@ export async function generateDisplayKeys(): Promise<{
   const privateJwk = await crypto.subtle.exportKey("jwk", pair.privateKey);
   return { publicKey: toB64u(raw), privateJwk };
 }
+
+export const generateDisplayKeys = generateKeyPair;
 
 async function aesKey(
   privateKey: CryptoKey,
@@ -83,13 +85,14 @@ async function aesKey(
   );
 }
 
-export async function sealCard(
-  displayPublicKey: string,
-  content: CardContent,
+/** Encrypt any JSON value for the holder of `recipientPublicKey`. */
+export async function sealJson(
+  recipientPublicKey: string,
+  value: unknown,
 ): Promise<SealedCard> {
   const recipient = await crypto.subtle.importKey(
     "raw",
-    fromB64u(displayPublicKey),
+    fromB64u(recipientPublicKey),
     ECDH,
     false,
     [],
@@ -97,16 +100,20 @@ export async function sealCard(
   const eph = await crypto.subtle.generateKey(ECDH, true, ["deriveBits"]);
   const key = await aesKey(eph.privateKey, recipient, "encrypt");
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const plain = new TextEncoder().encode(JSON.stringify(content));
+  const plain = new TextEncoder().encode(JSON.stringify(value));
   const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plain);
   const epk = await crypto.subtle.exportKey("raw", eph.publicKey);
   return { epk: toB64u(epk), iv: toB64u(iv), ct: toB64u(ct) };
 }
 
-export async function openCard(
+export const sealCard = (displayPublicKey: string, content: CardContent) =>
+  sealJson(displayPublicKey, content);
+
+/** Decrypt a value sealed with sealJson / sealCard. */
+export async function openJson<T>(
   privateJwk: JsonWebKey,
   card: SealedCard,
-): Promise<CardContent> {
+): Promise<T> {
   const priv = await crypto.subtle.importKey("jwk", privateJwk, ECDH, false, [
     "deriveBits",
   ]);
@@ -123,5 +130,8 @@ export async function openCard(
     key,
     fromB64u(card.ct),
   );
-  return JSON.parse(new TextDecoder().decode(plain)) as CardContent;
+  return JSON.parse(new TextDecoder().decode(plain)) as T;
 }
+
+export const openCard = (privateJwk: JsonWebKey, card: SealedCard) =>
+  openJson<CardContent>(privateJwk, card);

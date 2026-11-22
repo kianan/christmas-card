@@ -15,6 +15,19 @@ import type { Point, Slot } from "./hang";
 export interface StageCard {
   id: string;
   revealed: boolean;
+  /** Removed by the host: not drawn, but keeps its slot so others don't move. */
+  hidden?: boolean;
+}
+
+/** A revealed card shown in the looping display. */
+export interface LoopItem {
+  id: string;
+  content: CardContent;
+}
+
+/** Where revealed cards loop: centre point + width, as stage fractions. */
+export interface LoopArea extends Point {
+  width: number;
 }
 
 export interface SceneDef {
@@ -32,6 +45,8 @@ export interface SceneDef {
   cardWidth: number;
   /** 0–1 dark wash over the background so cards stand out on busy footage. */
   dim?: number;
+  /** Where revealed cards fade in and out (keep it clear of the hang region). */
+  loopAt: LoopArea;
 }
 
 export interface HangingCardProps {
@@ -44,8 +59,14 @@ export interface RevealProps {
   total: number;
 }
 
+export interface LoopCardProps {
+  content: CardContent;
+}
+
 export interface CardArt {
   name: string;
   HangingCard: ComponentType<HangingCardProps>;
   RevealCard: ComponentType<RevealProps>;
+  /** Compact card used in the looping display of revealed messages. */
+  LoopCard: ComponentType<LoopCardProps>;
 }

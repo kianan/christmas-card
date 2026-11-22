@@ -6,11 +6,15 @@
  *   display → guest  : "ack"        AckMsg
  *   host   → display : "host-hello" HostHelloMsg
  *   host   → display : "cmd"        CmdMsg
- *   display → host   : "status"     StatusMsg   (counts only — never message text)
+ *   display → host   : "status"     StatusMsg   (counts only)
+ *   display → host   : "revealed"   SealedCard  (RevealedList, encrypted to the
+ *                                                host remote's own key — the
+ *                                                relay never sees message text)
  */
 import type { SealedCard } from "./crypto";
 
 export const LIMITS = {
+  hostListItems: 100, // newest revealed cards sent to the host remote
   messageChars: 500,
   fromChars: 40,
   maxCards: 500,
@@ -37,14 +41,26 @@ export interface AckMsg {
 export interface HostHelloMsg {
   token: string;
   replyTo: string;
+  /** Host remote's public key, so the display can send it revealed cards. */
+  pubKey?: string;
 }
 
-export type HostAction = "start-reveal" | "next" | "back-to-collecting" | "end";
+export type HostAction =
+  | "start-reveal"
+  | "next"
+  | "back-to-collecting"
+  | "end"
+  | "remove"; // remove a revealed card (needs cardId)
 
-export interface CmdMsg {
-  token: string;
-  replyTo: string;
+export interface CmdMsg extends HostHelloMsg {
   action: HostAction;
+  cardId?: string;
+}
+
+/** Revealed cards, for the host remote (decrypted on the host's phone). */
+export interface RevealedList {
+  currentId?: string;
+  items: { id: string; message: string; from?: string }[];
 }
 
 export interface StatusMsg {

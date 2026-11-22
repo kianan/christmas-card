@@ -8,6 +8,7 @@ import { cardArt, getScene, nextScene, Stage } from "@/scene";
 
 const confirmEnd = () =>
   confirm("End the party? All cards will be wiped for good.");
+const confirmRemove = () => confirm("Remove this card? It can't be brought back.");
 
 /**
  * Fullscreen, plus Keyboard Lock (Chrome/Edge) so Esc reaches the page instead
@@ -30,10 +31,12 @@ export default function DisplayPage() {
   const {
     session,
     current,
+    revealedCards,
     connection,
     startReveal,
     revealNext,
     backToCollecting,
+    removeCard,
     endParty,
     newParty,
     setScene,
@@ -44,8 +47,9 @@ export default function DisplayPage() {
   const search = useSearch();
 
   const phase = session?.phase;
-  const total = session?.cards.length ?? 0;
-  const revealed = session?.cards.filter((c) => c.revealedAt).length ?? 0;
+  const liveCards = session?.cards.filter((c) => !c.removed) ?? [];
+  const total = liveCards.length;
+  const revealed = liveCards.filter((c) => c.revealedAt).length;
   const remaining = total - revealed;
   // Saved choice wins; otherwise ?scene=<id> in the URL; otherwise the default.
   const scene = getScene(session?.sceneId ?? new URLSearchParams(search).get("scene"));
@@ -65,11 +69,22 @@ export default function DisplayPage() {
         revealNext();
       } else if (k === "escape" && phase === "revealing") backToCollecting();
       else if (k === "s") setScene(nextScene(scene.id).id);
+      else if (k === "d" && current && confirmRemove()) removeCard(current.id);
       else if (k === "e" && confirmEnd()) endParty();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [phase, scene.id, startReveal, revealNext, backToCollecting, endParty, setScene]);
+  }, [
+    phase,
+    scene.id,
+    current,
+    startReveal,
+    revealNext,
+    backToCollecting,
+    removeCard,
+    endParty,
+    setScene,
+  ]);
 
   // Warn before closing the tab while cards are hanging.
   useEffect(() => {
@@ -135,7 +150,12 @@ export default function DisplayPage() {
         <Stage
           scene={scene}
           cardArt={cardArt}
-          cards={session.cards.map((c) => ({ id: c.id, revealed: Boolean(c.revealedAt) }))}
+          cards={session.cards.map((c) => ({
+            id: c.id,
+            revealed: Boolean(c.revealedAt),
+            hidden: c.removed,
+          }))}
+          revealed={revealedCards}
         />
       </section>
 
@@ -210,7 +230,18 @@ export default function DisplayPage() {
       {phase === "revealing" && (current || remaining === 0) && (
         <div className="overlay" onClick={revealNext}>
           {current ? (
-            <RevealCard content={current.content} index={revealed} total={total} />
+            <div className="reveal-wrap">
+              <RevealCard content={current.content} index={revealed} total={total} />
+              <button
+                className="secondary remove-card"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (confirmRemove()) removeCard(current.id);
+                }}
+              >
+                Remove card (D)
+              </button>
+            </div>
           ) : (
             <div className="reveal-card">
               <p className="message">That&apos;s every card! 🎉</p>

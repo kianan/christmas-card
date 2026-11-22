@@ -1,4 +1,4 @@
-import type { CardArt, HangingCardProps, RevealProps } from "../types";
+import type { CardArt, HangingCardProps, LoopCardProps, RevealProps } from "../types";
 
 function HangingCard({ revealed }: HangingCardProps) {
   return <div className={revealed ? "hanging-card opened" : "hanging-card"} />;
@@ -16,4 +16,13 @@ function RevealCard({ content, index, total }: RevealProps) {
   );
 }
 
-export const plainCards: CardArt = { name: "plain", HangingCard, RevealCard };
+function LoopCard({ content }: LoopCardProps) {
+  return (
+    <div className="loop-card">
+      <p className="message">{content.message}</p>
+      <p className="from">— {content.from || "Secret Santa"}</p>
+    </div>
+  );
+}
+
+export const plainCards: CardArt = { name: "plain", HangingCard, RevealCard, LoopCard };

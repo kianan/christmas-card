@@ -60,6 +60,18 @@ button.secondary {
   border: 1px solid #ffffff40;
 }
 
+/* Clear gold ring on the selected control: needed for TV remotes (arrow keys /
+   D-pad) and keyboard users. :focus-visible = only when moved by keys, not clicks. */
+button:focus-visible,
+.button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 7px #e8c26a40;
+}
+
 button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
